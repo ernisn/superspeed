@@ -43,13 +43,28 @@ if  [ ! -e '/usr/bin/wget' ]; then
 		fi
 fi
 
+# check jq
+if  [ `which jq` = "" ]; then
+		echo -e
+		read -p "${RED}Error:${PLAIN} jq is not install. You must be install jq command at first.\nDo you want to install? [y/n]" is_install
+		if [[ ${is_install} == "y" || ${is_install} == "Y" ]]; then
+				if [ "${release}" == "centos" ]; then
+						yum -y install jq
+				else
+						apt-get -y install jq
+				fi
+		else
+				exit
+		fi
+fi
+
 
 clear
 
 echo "————————————————————————SuperSpeed 全面测速版—————————————————————————"
 echo "     使用方法:      bash <(curl -Lso- https://git.io/superspeed)"
 echo "     查看全部节点:  https://git.io/superspeedList"
-echo "     节点更新日期:  2019/12/23       脚本更新日期:  2020/01/28"
+echo "     节点更新日期:  2019/12/23       脚本更新日期:  2020/02/27"
 echo "——————————————————————————————————————————————————————————————————————"
 echo "     选择测速类型: "
 echo -e "     ${GREEN}1.${PLAIN} 三网测速 (各取部分节点)                ${GREEN}2.${PLAIN} 取消本次测速"
@@ -66,39 +81,25 @@ done
 
 [[ ${selection} == 2 ]] && exit 1
 
+filename=ookla-speedtest-1.0.0-$(uname -m)-linux.tgz
 # install speedtest
-if  [ ! -e '/tmp/speedtest.py' ]; then
-	wget --no-check-certificate -P /tmp https://raw.github.com/sivel/speedtest-cli/master/speedtest.py > /dev/null 2>&1
+if  [ ! -e "/tmp/speedtest" ]; then
+	wget --no-check-certificate -O /tmp/$filename https://bintray.com/ookla/download/download_file?file_path=$filename > /dev/null 2>&1
+	tar zxf /tmp/$filename -C /tmp
 fi
-chmod a+rx /tmp/speedtest.py
 
 speed_test(){
-	temp=$(python /tmp/speedtest.py --server $1 --share 2>&1)
-	is_down=$(echo "$temp" | grep 'Download') 
-	if [[ ${is_down} ]]; then
-		local REDownload=$(echo "$temp" | awk -F ':' '/Download/{print $2}')
-		local reupload=$(echo "$temp" | awk -F ':' '/Upload/{print $2}')
-		local relatency=$(echo "$temp" | awk -F ':' '/Hosted/{print $2}')
-		temp=$(echo "$relatency" | awk -F '.' '{print $1}')
-		if [[ ${temp} -gt 1000 ]]; then
-			relatency=" > 1 s"
-		fi
-		local nodeID=$1
-		local nodeLocation=$2
-		local nodeISP=$3
-		
-		strnodeLocation="${nodeLocation}　　　　　　"
-		
-		#LANG=zh_CN.GB2312
-		#echo $LANG
-		#printf "${RED}%-6s${YELLOW}%s%s${GREEN}%-8s${CYAN}%-16s${BLUE}%-16s${PURPLE}%-10s${PLAIN}\n" "${nodeID}"  "${nodeISP}" "|" "${strnodeLocation:0:8}" "${reupload}" "${REDownload}" "${relatency}"
-		
+	result=$(/tmp/speedtest --accept-license --accept-gdpr -f json -u Mbps -p no -s $1 2>&1)
+	if [ $? = 0 ]; then
+		download=$(echo $result|jq -r .download.bandwidth|awk '{printf"%.2f",$1/1000/1000*8}')" Mbps"
+		upload=$(echo $result|jq -r .upload.bandwidth|awk '{printf"%.2f",$1/1000/1000*8}')" Mbps"
+		latency=$(echo $result|jq -r .ping.latency)" ms"
+		nodeID=$1
+		nodeISP=$3
+		strnodeLocation=$2
+
 		LANG=C
-		#echo $LANG
-		printf "${RED}%-6s${YELLOW}%s%s${GREEN}%-24s${CYAN}%-16s${BLUE}%-16s${PURPLE}%-10s${PLAIN}\n" "${nodeID}"  "${nodeISP}" "|" "${strnodeLocation:0:24}" "${reupload}" "${REDownload}" "${relatency}"
-		
-	else
-		local cerror="ERROR"
+		printf "${RED}%-6s${YELLOW}%s%s${GREEN}%-24s${CYAN}%-16s${BLUE}%-16s${PURPLE}%-10s${PLAIN}\n" "${nodeID}"  "${nodeISP}" "|" "${strnodeLocation:0:24}" "${upload}" "${download}" "${latency}"
 	fi
 }
 
